@@ -539,32 +539,26 @@ const fmt = (wei) => {
   try { return ethers.formatEther(wei); } catch { return "0"; }
 };
 
-// ======================
-// INIT + WALLET CONNECT
-// ======================
-window.addEventListener('load', () => {
-  $('#nftAddrLabel').textContent = NFT_ADDR;
-  $('#marketAddrLabel').textContent = MARKET_ADDR;
-  $$('.tab').forEach(t=>t.addEventListener('click', onTab));
-  $('#btnConnect').addEventListener('click', connect);
-  $('#btnRefreshMy').addEventListener('click', loadMyNfts);
-  $('#btnRefreshMarket').addEventListener('click', loadMarket);
-  $('#btnApprove').addEventListener('click', setApprovalAll);
-});
-
 async function connect(){
-  if(!window.ethereum){ alert('Install MetaMask.'); return; }
+  if (!window.ethereum) {
+    alert('Install MetaMask.');
+    return;
+  }
+
   provider = new ethers.BrowserProvider(window.ethereum);
+
+  // minta izin akun
   await provider.send('eth_requestAccounts', []);
   signer = await provider.getSigner();
   account = await signer.getAddress();
 
+  // cek network
   const net = await provider.getNetwork();
   if (Number(net.chainId) !== 11155111){
     try {
       await window.ethereum.request({
         method: 'wallet_switchEthereumChain',
-        params: [{ chainId: '0xaa36a7' }], // 11155111
+        params: [{ chainId: '0xaa36a7' }], // sepolia
       });
     } catch(e){
       alert('Please switch to Sepolia network.');
@@ -572,17 +566,21 @@ async function connect(){
     }
   }
 
+  // update UI
   $('#accountTag').textContent = `Wallet: ${account.slice(0,6)}…${account.slice(-4)}`;
   $('#networkTag').textContent = `Network: Sepolia`;
 
+  // init kontrak
   nft = new ethers.Contract(NFT_ADDR, ERC721_ENUM_ABI, signer);
   market = new ethers.Contract(MARKET_ADDR, MARKET_ABI, signer);
 
-  // Tampilkan fee
+  // tampilkan fee
   try {
     const fee = await market.feeBps();
     $('#feeLabel').textContent = `${fee} bps (${(Number(fee)/100).toFixed(2)}%)`;
-  } catch {}
+  } catch(e) {
+    console.warn("Gagal ambil fee:", e);
+  }
 
   await refreshApprovalBadge();
   await loadMyNfts();
@@ -791,4 +789,5 @@ async function cancelListing(id){
 </script>
 </body>
 </html>
+
 
