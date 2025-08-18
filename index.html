@@ -519,74 +519,43 @@ const MARKET_ABI = [
 	}
 ];
 
-// =============
-// STATE & UTIL
-// =============
-let provider, signer, account, nft, market;
+ let currentAccount = null;
 
-const $ = (sel)=>document.querySelector(sel);
-const $$ = (sel)=>document.querySelectorAll(sel);
+  async function connectWallet() {
+    if (typeof window.ethereum === "undefined") {
+      alert("MetaMask belum terpasang. Silakan install MetaMask.");
+      return;
+    }
 
-const ipfsToHttp = (uri) => {
-  if (!uri) return uri;
-  if (uri.startsWith("ipfs://")) {
-    return uri.replace("ipfs://", "https://ipfs.io/ipfs/");
-  }
-  return uri;
-};
-
-const fmt = (wei) => {
-  try { return ethers.formatEther(wei); } catch { return "0"; }
-};
-
-async function connect(){
-  if (!window.ethereum) {
-    alert('Install MetaMask.');
-    return;
-  }
-
-  provider = new ethers.BrowserProvider(window.ethereum);
-
-  // minta izin akun
-  await provider.send('eth_requestAccounts', []);
-  signer = await provider.getSigner();
-  account = await signer.getAddress();
-
-  // cek network
-  const net = await provider.getNetwork();
-  if (Number(net.chainId) !== 11155111){
     try {
-      await window.ethereum.request({
-        method: 'wallet_switchEthereumChain',
-        params: [{ chainId: '0xaa36a7' }], // sepolia
+      const accounts = await window.ethereum.request({
+        method: "eth_requestAccounts",
       });
-    } catch(e){
-      alert('Please switch to Sepolia network.');
-      console.warn(e);
+      currentAccount = accounts[0];
+
+      // tampilkan alamat wallet di tombol
+      document.getElementById("walletButton").innerText =
+        "Connected: " + currentAccount.substring(0, 6) + "..." + currentAccount.slice(-4);
+
+    } catch (error) {
+      console.error("❌ Gagal connect wallet:", error);
+      alert("Gagal connect wallet: " + error.message);
     }
   }
 
-  // update UI
-  $('#accountTag').textContent = `Wallet: ${account.slice(0,6)}…${account.slice(-4)}`;
-  $('#networkTag').textContent = `Network: Sepolia`;
-
-  // init kontrak
-  nft = new ethers.Contract(NFT_ADDR, ERC721_ENUM_ABI, signer);
-  market = new ethers.Contract(MARKET_ADDR, MARKET_ABI, signer);
-
-  // tampilkan fee
-  try {
-    const fee = await market.feeBps();
-    $('#feeLabel').textContent = `${fee} bps (${(Number(fee)/100).toFixed(2)}%)`;
-  } catch(e) {
-    console.warn("Gagal ambil fee:", e);
+  // auto update jika user ganti account di MetaMask
+  if (window.ethereum) {
+    window.ethereum.on("accountsChanged", (accounts) => {
+      if (accounts.length > 0) {
+        currentAccount = accounts[0];
+        document.getElementById("walletButton").innerText =
+          "Connected: " + currentAccount.substring(0, 6) + "..." + currentAccount.slice(-4);
+      } else {
+        document.getElementById("walletButton").innerText = "Connect Wallet";
+      }
+    });
   }
-
-  await refreshApprovalBadge();
-  await loadMyNfts();
-  await loadMarket();
-}
-
+	
 function onTab(e){
   $$('.tab').forEach(t=>t.classList.remove('active'));
   e.currentTarget.classList.add('active');
@@ -789,6 +758,7 @@ async function cancelListing(id){
 </script>
 </body>
 </html>
+
 
 
 
