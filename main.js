@@ -1,6 +1,3 @@
-// main.js (ethers v5 ready)
-// =========================
-
 // CONFIG – GANTI ALAMAT MU
 const NFT_ADDR = "0x4539dA97ddeF6142BCb3259C8a7de703C52cf76B";
 const MARKET_ADDR = "0xb871eDc06E6FeE83e993e5801fFE5FD9d060697C";
