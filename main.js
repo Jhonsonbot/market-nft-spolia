@@ -434,36 +434,26 @@ const MARKET_ABI = [
  let nft, market;
 
 async function connectWallet() {
-  if (typeof window.ethereum === "undefined") {
-    return alert("🚨 Please install MetaMask first!");
-  }
-
   try {
-    // provider & signer
-    provider = new ethers.providers.Web3Provider(window.ethereum);
+    if (!window.ethereum) {
+      alert("MetaMask tidak ditemukan!");
+      return;
+    }
+
+    const provider = new ethers.providers.Web3Provider(window.ethereum);
     await provider.send("eth_requestAccounts", []);
-    signer = provider.getSigner();
+    const signer = provider.getSigner();
+    const account = await signer.getAddress();
+    const network = await provider.getNetwork();
 
-    // simpan akun yang terhubung
-    account = await signer.getAddress();
+    // Update UI sesuai ID yg ada di HTML
+    document.getElementById("accountTag").textContent = `Wallet: ${account}`;
+    document.getElementById("networkTag").textContent = `Network: ${network.name} (${network.chainId})`;
 
-    // inisialisasi kontrak NFT (ERC721)
-    nft = new ethers.Contract(NFT_ADDR, ERC721_ENUM_ABI, signer);
-
-    // inisialisasi kontrak Marketplace
-    market = new ethers.Contract(MARKET_ADDR, MARKET_ABI, signer);
-
-    // tanda tangan pesan (opsional untuk login verifikasi)
-    const message = `Sign in to MRT.LOCK with address ${account}`;
-    await signer.signMessage(message);
-
-    // update UI
     document.getElementById("connectBtn").style.display = "none";
     document.getElementById("disconnectBtn").style.display = "inline-block";
-    document.getElementById("accountLabel").textContent = account;
 
-    // load data awal marketplace
-    loadPublicLocks(); // <-- pastikan fungsi ini ada
+    console.log("✅ Wallet connected:", account);
   } catch (err) {
     console.error("❌ Wallet connect failed:", err);
     alert("Failed to connect wallet. Check console for details.");
@@ -471,12 +461,14 @@ async function connectWallet() {
 }
 
 function disconnectWallet() {
-  signer = null;
-  contract = null;
-  provider = null;
+  // Reset UI
+  document.getElementById("accountTag").textContent = "Wallet: —";
+  document.getElementById("networkTag").textContent = "Network: —";
+
   document.getElementById("connectBtn").style.display = "inline-block";
   document.getElementById("disconnectBtn").style.display = "none";
-  document.getElementById("lockList").innerHTML = "";
+
+  console.log("✅ Wallet disconnected");
 }
 
 
