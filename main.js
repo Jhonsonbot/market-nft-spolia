@@ -1,9 +1,11 @@
-
+// main.js (ethers v5 ready)
 // =========================
-const NFT_ADDR = "0x4539dA97ddeF6142BCb3259C8a7de703C52cf76B";          // ERC-721 (disarankan ERC721Enumerable)
-const MARKET_ADDR = "0xb871eDc06E6FeE83e993e5801fFE5FD9d060697C";       // Marketplace yang kamu deploy
 
-// ABI minimal yang diperlukan
+// CONFIG – GANTI ALAMAT MU
+const NFT_ADDR = "0x4539dA97ddeF6142BCb3259C8a7de703C52cf76B";
+const MARKET_ADDR = "0xb871eDc06E6FeE83e993e5801fFE5FD9d060697C";
+
+// ABI minimal (sesuaikan jika kontrakmu beda)
 const ERC721_ENUM_ABI = [
   "function balanceOf(address owner) view returns (uint256)",
   "function tokenOfOwnerByIndex(address owner, uint256 index) view returns (uint256)",
@@ -13,6 +15,8 @@ const ERC721_ENUM_ABI = [
   "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)"
 ];
 
+// ABI marketplace minimal — pastikan nama fungsi cocok dengan kontrakmu.
+// Kalo kontrakmu pake nama lain (mis. listNFT / buyNFT), ubah ABI / pemanggilan.
 const MARKET_ABI = [
 	{
 		"inputs": [],
@@ -428,118 +432,161 @@ const MARKET_ABI = [
 	}
 ];
 
- let currentAccount = null;
- let provider, signer, account;
- let nft, market;
+// Globals
+let provider = null;
+let signer = null;
+let account = null;
+let nft = null;
+let market = null;
 
-async function connectWallet() {
+// Helper: safe selector
+const $ = id => document.getElementById(id);
+
+// Helper IPFS -> HTTP
+function ipfsToHttp(uri){
+  if(!uri) return uri;
+  if(uri.startsWith("ipfs://")) return uri.replace("ipfs://", "https://ipfs.io/ipfs/");
+  return uri;
+}
+
+// Helper format wei -> ETH string (4 desimal)
+function fmt(bn){
   try {
-    if (!window.ethereum) {
-      alert("MetaMask tidak ditemukan!");
-      return;
-    }
+    const f = ethers.utils.formatEther(bn);
+    // trim trailing zeros
+    return parseFloat(f).toFixed(4).replace(/\.?0+$/,"");
+  } catch(e){
+    return String(bn);
+  }
+}
 
+// UI tab handler
+function onTab(e){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  e.currentTarget.classList.add('active');
+  const key = e.currentTarget.dataset.tab;
+  $('#panel-my').hidden = key !== 'my';
+  $('#panel-market').hidden = key !== 'market';
+}
+
+// Connect wallet (ethers v5) + switch to Sepolia
+async function connectWallet(){
+  if(typeof window.ethereum === "undefined"){
+    alert("Please install MetaMask!");
+    return;
+  }
+
+  try {
+    // request accounts
     provider = new ethers.providers.Web3Provider(window.ethereum);
     await provider.send("eth_requestAccounts", []);
-    signer = provider.getSigner();
-    account = await signer.getAddress();
 
-    // 👉 Paksa pindah ke Sepolia
+    // try switch to Sepolia (chainId 11155111 - hex 0xaa36a7)
     try {
       await window.ethereum.request({
         method: "wallet_switchEthereumChain",
-        params: [{ chainId: "0xaa36a7" }], // 11155111 hex
+        params: [{ chainId: "0xaa36a7" }]
       });
     } catch (switchError) {
-      if (switchError.code === 4902) {
-        await window.ethereum.request({
-          method: "wallet_addEthereumChain",
-          params: [{
-            chainId: "0xaa36a7",
-            chainName: "Sepolia Test Network",
-            nativeCurrency: { name: "SepoliaETH", symbol: "ETH", decimals: 18 },
-            rpcUrls: ["https://rpc.sepolia.org/"],
-            blockExplorerUrls: ["https://sepolia.etherscan.io/"]
-          }],
-        });
+      // 4902 = chain not found, ask to add
+      if (switchError && switchError.code === 4902) {
+        try {
+          await window.ethereum.request({
+            method: "wallet_addEthereumChain",
+            params: [{
+              chainId: "0xaa36a7",
+              chainName: "Sepolia Test Network",
+              nativeCurrency: { name: "SepoliaETH", symbol: "ETH", decimals: 18 },
+              rpcUrls: ["https://rpc.sepolia.org/"],
+              blockExplorerUrls: ["https://sepolia.etherscan.io/"]
+            }]
+          });
+        } catch(addErr){
+          console.warn("Failed to add Sepolia to MetaMask:", addErr);
+        }
       } else {
-        throw switchError;
+        console.warn("Switch chain error:", switchError);
       }
     }
 
+    // re-init provider & signer after possible switch
+    provider = new ethers.providers.Web3Provider(window.ethereum);
+    signer = provider.getSigner();
+    account = await signer.getAddress();
+
     const network = await provider.getNetwork();
-    if (network.chainId !== 11155111) {
-      alert("⚠️ Harus di jaringan Sepolia!");
-      return;
+    if(network.chainId !== 11155111){
+      // still not Sepolia — inform user but continue (or return)
+      alert("Please switch MetaMask to Sepolia Testnet.");
+      // we continue but most contract calls will fail if wrong network
     }
 
-    // ✅ Update UI (cek dulu apakah element ada)
-    const accTag = document.getElementById("accountTag");
-    const netTag = document.getElementById("networkTag");
-    if (accTag) accTag.textContent = `Wallet: ${account}`;
-    if (netTag) netTag.textContent = `Network: ${network.name} (${network.chainId})`;
+    // update UI
+    $('#accountTag').textContent = `Wallet: ${account}`;
+    $('#networkTag').textContent = `Network: ${network.name} (${network.chainId})`;
+    $('#connectBtn').style.display = "none";
+    $('#disconnectBtn').style.display = "inline-block";
 
-    const connectBtn = document.getElementById("connectBtn");
-    const disconnectBtn = document.getElementById("disconnectBtn");
-    if (connectBtn) connectBtn.style.display = "none";
-    if (disconnectBtn) disconnectBtn.style.display = "inline-block";
-
-    // ✅ Inisialisasi kontrak NFT & Market
+    // init contracts with signer
     nft = new ethers.Contract(NFT_ADDR, ERC721_ENUM_ABI, signer);
     market = new ethers.Contract(MARKET_ADDR, MARKET_ABI, signer);
 
+    // update labels
+    $('#nftAddrLabel').textContent = NFT_ADDR;
+    $('#marketAddrLabel').textContent = MARKET_ADDR;
+
+    // load UI data
+    try { await refreshApprovalBadge(); } catch(e){ console.warn(e); }
+    try { await loadMyNfts(); } catch(e){ console.warn(e); }
+    try { await loadMarket(); } catch(e){ console.warn(e); }
+
     console.log("✅ Wallet connected:", account);
-
-    // 👉 Deteksi jumlah NFT user
-    let balance = await nft.balanceOf(account);
-    console.log(`📦 Kamu punya ${balance.toString()} NFT`);
-
-    if (balance.gt(0)) {
-      for (let i = 0; i < balance; i++) {
-        let tokenId = await nft.tokenOfOwnerByIndex(account, i);
-        console.log(`🎨 NFT ID: ${tokenId.toString()}`);
-      }
-    } else {
-      console.log("❌ Tidak ada NFT di wallet ini.");
-    }
-
   } catch (err) {
     console.error("❌ Wallet connect failed:", err);
     alert("Failed to connect wallet. Check console for details.");
   }
 }
 
-function disconnectWallet() {
-  // Reset UI
-  document.getElementById("accountTag").textContent = "Wallet: —";
-  document.getElementById("networkTag").textContent = "Network: —";
+function disconnectWallet(){
+  provider = null;
+  signer = null;
+  account = null;
+  nft = null;
+  market = null;
 
-  document.getElementById("connectBtn").style.display = "inline-block";
-  document.getElementById("disconnectBtn").style.display = "none";
-
+  $('#accountTag').textContent = "Wallet: —";
+  $('#networkTag').textContent = "Network: —";
+  $('#connectBtn').style.display = "inline-block";
+  $('#disconnectBtn').style.display = "none";
+  $('#myList').innerHTML = "";
+  $('#marketList').innerHTML = "";
   console.log("✅ Wallet disconnected");
 }
 
-
-  // auto update jika user ganti account di MetaMask
-  if (window.ethereum) {
-    window.ethereum.on("accountsChanged", (accounts) => {
-      if (accounts.length > 0) {
-        currentAccount = accounts[0];
-        document.getElementById("walletButton").innerText =
-          "Connected: " + currentAccount.substring(0, 6) + "..." + currentAccount.slice(-4);
-      } else {
-        document.getElementById("walletButton").innerText = "Connect Wallet";
+// Auto-update when account / chain change
+if(window.ethereum){
+  window.ethereum.on("accountsChanged", async (accounts) => {
+    if(!accounts || accounts.length === 0) {
+      disconnectWallet();
+    } else {
+      account = accounts[0];
+      $('#accountTag').textContent = `Wallet: ${account}`;
+      // re-create signer & contracts
+      if(provider){
+        signer = provider.getSigner();
+        nft = new ethers.Contract(NFT_ADDR, ERC721_ENUM_ABI, signer);
+        market = new ethers.Contract(MARKET_ADDR, MARKET_ABI, signer);
+        try { await refreshApprovalBadge(); } catch(e){ console.warn(e); }
+        try { await loadMyNfts(); } catch(e){ console.warn(e); }
       }
-    });
-  }
-	
-function onTab(e){
-  $$('.tab').forEach(t=>t.classList.remove('active'));
-  e.currentTarget.classList.add('active');
-  const key = e.currentTarget.dataset.tab;
-  $('#panel-my').hidden = key !== 'my';
-  $('#panel-market').hidden = key !== 'market';
+    }
+  });
+
+  window.ethereum.on("chainChanged", (chainId) => {
+    // reload to simplify re-init on chain change
+    console.log("chainChanged -> reload", chainId);
+    window.location.reload();
+  });
 }
 
 // ======================
@@ -549,36 +596,50 @@ async function refreshApprovalBadge(){
   if(!nft || !account) return;
   try {
     const ok = await nft.isApprovedForAll(account, MARKET_ADDR);
-    $('#btnApprove').textContent = ok ? 'Approved ✓' : 'Set ApprovalForAll';
-    $('#btnApprove').disabled = ok;
-  } catch(e){ console.warn(e); }
+    const btn = $('#btnApprove');
+    if(btn){
+      btn.textContent = ok ? 'Approved ✓' : 'Set ApprovalForAll';
+      btn.disabled = ok;
+    }
+  } catch(e){
+    console.warn("refreshApprovalBadge failed:", e);
+  }
 }
 
 async function setApprovalAll(){
-  if(!nft) return;
-  try{
+  if(!nft || !signer) return alert('Connect wallet dulu!');
+  try {
     const tx = await nft.setApprovalForAll(MARKET_ADDR, true);
     await tx.wait();
     await refreshApprovalBadge();
     alert('Approval set!');
-  }catch(e){ alert('Approval failed'); console.error(e); }
+  } catch(e){
+    console.error(e);
+    alert('Approval failed. See console.');
+  }
 }
 
 // ======================
 // LOAD MY NFTS
 // ======================
 async function loadMyNfts(){
-  if(!nft || !account){ $('#myList').innerHTML = '<p class="muted">Connect wallet dulu.</p>'; return; }
+  if(!nft || !account){
+    $('#myList').innerHTML = '<p class="muted">Connect wallet dulu.</p>';
+    return;
+  }
   $('#myList').innerHTML = '<p class="muted">Loading…</p>';
-  try{
+  try {
     const bal = await nft.balanceOf(account);
-    const total = Number(bal);
-    if(total===0){ $('#myList').innerHTML = '<p class="muted">Tidak ada NFT pada koleksi ini.</p>'; return; }
+    const total = Number(bal.toString());
+    if(total === 0){
+      $('#myList').innerHTML = '<p class="muted">Tidak ada NFT pada koleksi ini.</p>';
+      return;
+    }
 
     const items = [];
     for(let i=0;i<total;i++){
-      const tokenId = await nft.tokenOfOwnerByIndex(account, i);
-      items.push(Number(tokenId));
+      const tokenIdBn = await nft.tokenOfOwnerByIndex(account, i);
+      items.push(Number(tokenIdBn.toString()));
     }
 
     const cards = await Promise.all(items.map(renderMyCard));
@@ -589,9 +650,9 @@ async function loadMyNfts(){
       const btn = document.getElementById(`btnList-${id}`);
       if(btn){ btn.addEventListener('click', ()=> listToken(id)); }
     });
-  }catch(e){
+  } catch(e){
     console.error(e);
-    $('#myList').innerHTML = '<p class="err">Gagal load NFT. Pastikan kontrak ERC721Enumerable.</p>';
+    $('#myList').innerHTML = '<p class="err">Gagal load NFT. Pastikan kontrak ERC721Enumerable dan jaringan benar.</p>';
   }
 }
 
@@ -606,7 +667,7 @@ async function renderMyCard(tokenId){
       name = j.name || name;
       img = ipfsToHttp(j.image || '');
       desc = j.description || '';
-    }catch{}
+    }catch(e){ /* ignore metadata errors */ }
 
     return `
       <div class="card">
@@ -620,7 +681,7 @@ async function renderMyCard(tokenId){
           <button id="btnList-${tokenId}">List for Sale</button>
         </div>
       </div>`;
-  }catch{
+  }catch(e){
     return `<div class="card"><div class="body">Token ${tokenId}</div></div>`;
   }
 }
@@ -631,15 +692,16 @@ async function renderMyCard(tokenId){
 async function listToken(tokenId){
   const priceStr = (document.getElementById(`price-${tokenId}`)?.value || '').trim();
   if(!priceStr){ alert('Isi harga dalam ETH, mis. 0.01'); return; }
+  if(!market || !signer) return alert('Connect wallet dulu!');
   try{
-    const wei = ethers.parseEther(priceStr);
+    const wei = ethers.utils.parseEther(priceStr);
     const tx = await market.list(NFT_ADDR, tokenId, wei);
     await tx.wait();
     alert('Listed!');
     await loadMarket();
   }catch(e){
     console.error(e);
-    alert('List gagal. Pastikan sudah ApprovalForAll.');
+    alert('List gagal. Pastikan sudah ApprovalForAll dan jaringan benar.');
   }
 }
 
@@ -647,19 +709,38 @@ async function listToken(tokenId){
 // LOAD MARKET LISTINGS
 // ======================
 async function loadMarket(){
-  if(!market){ $('#marketList').innerHTML = '<p class="muted">Connect wallet dulu.</p>'; return; }
+  if(!market){
+    $('#marketList').innerHTML = '<p class="muted">Connect wallet dulu.</p>';
+    return;
+  }
   $('#marketList').innerHTML = '<p class="muted">Loading…</p>';
   try{
-    const nextId = await market.nextListingId();
-    const max = Number(nextId);
+    const nextIdBn = await market.nextListingId();
+    const max = Number(nextIdBn.toString());
     const active = [];
+
     for(let id=1; id<=max; id++){
-      const L = await market.listings(id);
-      if(L.active && String(L.nft).toLowerCase() === NFT_ADDR.toLowerCase()){
-        active.push({id, seller:L.seller, tokenId: Number(L.tokenId), price: L.price});
+      try {
+        const L = await market.listings(id);
+        // L may be an object or array. Access properties defensively
+        const activeFlag = L.active ?? L[4] ?? false;
+        const nftAddr = L.nft ?? L[0];
+        const tokenIdBn = L.tokenId ?? L[1];
+        const seller = L.seller ?? L[2];
+        const price = L.price ?? L[3];
+
+        if(activeFlag && String(nftAddr).toLowerCase() === NFT_ADDR.toLowerCase()){
+          active.push({ id, seller, tokenId: Number(tokenIdBn.toString()), price });
+        }
+      } catch(e){
+        // if some listing id doesn't exist, ignore
       }
     }
-    if(active.length===0){ $('#marketList').innerHTML = '<p class="muted">Belum ada listing aktif.</p>'; return; }
+
+    if(active.length===0){
+      $('#marketList').innerHTML = '<p class="muted">Belum ada listing aktif.</p>';
+      return;
+    }
 
     const cards = await Promise.all(active.map(renderMarketCard));
     $('#marketList').innerHTML = cards.join('');
@@ -672,7 +753,7 @@ async function loadMarket(){
     });
   }catch(e){
     console.error(e);
-    $('#marketList').innerHTML = '<p class="err">Gagal load listing.</p>';
+    $('#marketList').innerHTML = '<p class="err">Gagal load listing. Lihat console.</p>';
   }
 }
 
@@ -684,8 +765,8 @@ async function renderMarketCard(item){
     const metaUrl = ipfsToHttp(uri);
     const j = await (await fetch(metaUrl)).json();
     name = j.name || name; img = ipfsToHttp(j.image||''); desc = j.description || '';
-  }catch{}
-  const isSeller = account && seller && account.toLowerCase()===seller.toLowerCase();
+  }catch(e){}
+  const isSeller = account && seller && account.toLowerCase()===String(seller).toLowerCase();
   return `
     <div class="card">
       <img src="${img||''}" alt="NFT ${tokenId}" onerror="this.style.display='none'"/>
@@ -714,23 +795,47 @@ async function renderMarketCard(item){
 // BUY / CANCEL
 // ======================
 async function buyListing(id){
+  if(!market || !signer) return alert('Connect wallet dulu!');
   try{
     const L = await market.listings(id);
-    if(!L.active){ alert('Listing tidak aktif'); return; }
-    const tx = await market.buy(id, { value: L.price });
+    const price = L.price ?? L[3];
+    if(!price){ alert('Listing price not found'); return; }
+    const tx = await market.buy(id, { value: price });
     await tx.wait();
     alert('Purchase success!');
     await loadMarket();
     await loadMyNfts();
-  }catch(e){ console.error(e); alert('Buy failed'); }
+  }catch(e){ console.error(e); alert('Buy failed. See console.'); }
 }
 
 async function cancelListing(id){
+  if(!market || !signer) return alert('Connect wallet dulu!');
   try{
     const tx = await market.cancel(id);
     await tx.wait();
     alert('Canceled');
     await loadMarket();
-  }catch(e){ console.error(e); alert('Cancel failed'); }
+  }catch(e){ console.error(e); alert('Cancel failed. See console.'); }
 }
 
+// ======================
+// Bind UI after DOM ready
+// ======================
+window.addEventListener('DOMContentLoaded', () => {
+  // fill contract labels
+  $('#nftAddrLabel').textContent = NFT_ADDR;
+  $('#marketAddrLabel').textContent = MARKET_ADDR;
+
+  // wire buttons
+  $('#btnRefreshMy').addEventListener('click', loadMyNfts);
+  $('#btnApprove').addEventListener('click', setApprovalAll);
+  $('#btnRefreshMarket').addEventListener('click', loadMarket);
+  $('#connectBtn').addEventListener('click', connectWallet);
+  $('#disconnectBtn').addEventListener('click', disconnectWallet);
+
+  document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', onTab));
+
+  // initial UI
+  $('#accountTag').textContent = "Wallet: —";
+  $('#networkTag').textContent = "Network: —";
+});
