@@ -1,5 +1,4 @@
 
-// CONFIG – GANTI ALAMAT MU
 // =========================
 const NFT_ADDR = "0x4539dA97ddeF6142BCb3259C8a7de703C52cf76B";          // ERC-721 (disarankan ERC721Enumerable)
 const MARKET_ADDR = "0xb871eDc06E6FeE83e993e5801fFE5FD9d060697C";       // Marketplace yang kamu deploy
