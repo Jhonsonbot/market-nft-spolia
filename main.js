@@ -440,18 +440,50 @@ async function connectWallet() {
       return;
     }
 
-    const provider = new ethers.providers.Web3Provider(window.ethereum);
+    provider = new ethers.providers.Web3Provider(window.ethereum);
     await provider.send("eth_requestAccounts", []);
-    const signer = provider.getSigner();
-    const account = await signer.getAddress();
-    const network = await provider.getNetwork();
+    signer = provider.getSigner();
+    account = await signer.getAddress();
 
-    // Update UI sesuai ID yg ada di HTML
+    // 👉 Paksa pindah ke Sepolia
+    try {
+      await window.ethereum.request({
+        method: "wallet_switchEthereumChain",
+        params: [{ chainId: "0xaa36a7" }], // 11155111 hexa
+      });
+    } catch (switchError) {
+      // Kalau chain belum ada di MetaMask → tambahkan dulu
+      if (switchError.code === 4902) {
+        await window.ethereum.request({
+          method: "wallet_addEthereumChain",
+          params: [{
+            chainId: "0xaa36a7",
+            chainName: "Sepolia Test Network",
+            nativeCurrency: { name: "SepoliaETH", symbol: "ETH", decimals: 18 },
+            rpcUrls: ["https://rpc.sepolia.org/"],
+            blockExplorerUrls: ["https://sepolia.etherscan.io/"]
+          }],
+        });
+      } else {
+        throw switchError;
+      }
+    }
+
+    const network = await provider.getNetwork();
+    if (network.chainId !== 11155111) {
+      alert("⚠️ Harus di jaringan Sepolia!");
+      return;
+    }
+
+    // Update UI
     document.getElementById("accountTag").textContent = `Wallet: ${account}`;
     document.getElementById("networkTag").textContent = `Network: ${network.name} (${network.chainId})`;
-
     document.getElementById("connectBtn").style.display = "none";
     document.getElementById("disconnectBtn").style.display = "inline-block";
+
+    // Inisialisasi kontrak
+    nft = new ethers.Contract(NFT_ADDR, ERC721_ENUM_ABI, signer);
+    market = new ethers.Contract(MARKET_ADDR, MARKET_ABI, signer);
 
     console.log("✅ Wallet connected:", account);
   } catch (err) {
