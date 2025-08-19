@@ -1,5 +1,10 @@
 // main.js — robust v5 version (use with ethers v5 CDN)
 // --------------------------------------------------
+const networkTag   = document.getElementById("networkTag");
+const accountTag   = document.getElementById("accountTag");
+const nftAddrLabel = document.getElementById("nftAddrLabel");
+const marketAddrLabel = document.getElementById("marketAddrLabel");
+const feeLabel = document.getElementById("feeLabel");
 
 // CONFIG – GANTI ALAMAT MU
 const NFT_ADDR = "0x4539dA97ddeF6142BCb3259C8a7de703C52cf76B";
