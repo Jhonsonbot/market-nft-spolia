@@ -430,23 +430,44 @@ const MARKET_ABI = [
 ];
 
  let currentAccount = null;
+ let provider, signer, account;
+ let nft, market;
 
-  async function connectWallet() {
-  if (typeof window.ethereum === "undefined") return alert("Please install MetaMask!");
+async function connectWallet() {
+  if (typeof window.ethereum === "undefined") {
+    return alert("🚨 Please install MetaMask first!");
+  }
 
-  provider = new ethers.providers.Web3Provider(window.ethereum);
-  await provider.send("eth_requestAccounts", []);
-  signer = provider.getSigner();
-  contract = new ethers.Contract(contractAddress, abi, signer);
+  try {
+    // provider & signer
+    provider = new ethers.providers.Web3Provider(window.ethereum);
+    await provider.send("eth_requestAccounts", []);
+    signer = provider.getSigner();
 
-  document.getElementById("connectBtn").style.display = "none";
-  document.getElementById("disconnectBtn").style.display = "inline-block";
+    // simpan akun yang terhubung
+    account = await signer.getAddress();
 
-  const address = await signer.getAddress();
-  const message = `Sign in to MRT.LOCK with address ${address}`;
-  await signer.signMessage(message);
+    // inisialisasi kontrak NFT (ERC721)
+    nft = new ethers.Contract(NFT_ADDR, ERC721_ENUM_ABI, signer);
 
-  loadPublicLocks();
+    // inisialisasi kontrak Marketplace
+    market = new ethers.Contract(MARKET_ADDR, MARKET_ABI, signer);
+
+    // tanda tangan pesan (opsional untuk login verifikasi)
+    const message = `Sign in to MRT.LOCK with address ${account}`;
+    await signer.signMessage(message);
+
+    // update UI
+    document.getElementById("connectBtn").style.display = "none";
+    document.getElementById("disconnectBtn").style.display = "inline-block";
+    document.getElementById("accountLabel").textContent = account;
+
+    // load data awal marketplace
+    loadPublicLocks(); // <-- pastikan fungsi ini ada
+  } catch (err) {
+    console.error("❌ Wallet connect failed:", err);
+    alert("Failed to connect wallet. Check console for details.");
+  }
 }
 
 function disconnectWallet() {
