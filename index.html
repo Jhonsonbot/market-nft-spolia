@@ -1,10 +1,11 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="id">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Mini NFT Market – Sepolia</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Mini NFT Market · Sepolia</title>
   <link rel="stylesheet" href="style.css" />
+  <!-- ethers v5 UMD -->
   <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
 </head>
 <body>
@@ -14,8 +15,8 @@
       <div class="row" style="margin-left:auto;gap:8px">
         <span id="networkTag" class="pill">Network: —</span>
         <span id="accountTag" class="pill">Wallet: —</span>
-        <button id="connectBtn" onclick="connectWallet()">🔌 Connect Wallet</button>
-        <button id="disconnectBtn" onclick="disconnectWallet()" style="display:none;">❌ Disconnect</button>
+        <button id="connectBtn">🔌 Connect Wallet</button>
+        <button id="disconnectBtn" style="display:none;">❌ Disconnect</button>
       </div>
     </div>
   </header>
@@ -41,7 +42,7 @@
         </div>
       </div>
       <div id="myList" class="grid"></div>
-      <p class="small muted" style="margin-top:12px">Catatan: agar bisa list, perlu <b>setApprovalForAll</b> ke Marketplace. Jika sudah, tombol di atas akan menunjukkan statusnya.</p>
+      <p class="small muted" style="margin-top:12px">Catatan: agar bisa list, perlu <b>setApprovalForAll</b> ke Marketplace.</p>
     </section>
 
     <section id="panel-market" hidden>
@@ -56,16 +57,10 @@
   </main>
 
   <footer class="wrap small muted">
-    <div>Built with ethers.js v6 · Sepolia chainId <span class="code">11155111</span>. Ganti alamat NFT/Marketplace di bagian config dalam file ini.</div>
+    <div>Built with ethers.js v5 · Sepolia chainId <span class="code">11155111</span>.</div>
   </footer>
-	
-<script src="main.js"></script>
 
+  <!-- main.js external -->
+  <script src="main.js"></script>
 </body>
 </html>
-
-
-
-
-
-
