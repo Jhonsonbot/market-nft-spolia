@@ -449,10 +449,9 @@ async function connectWallet() {
     try {
       await window.ethereum.request({
         method: "wallet_switchEthereumChain",
-        params: [{ chainId: "0xaa36a7" }], // 11155111 hexa
+        params: [{ chainId: "0xaa36a7" }], // 11155111 hex
       });
     } catch (switchError) {
-      // Kalau chain belum ada di MetaMask → tambahkan dulu
       if (switchError.code === 4902) {
         await window.ethereum.request({
           method: "wallet_addEthereumChain",
@@ -475,17 +474,36 @@ async function connectWallet() {
       return;
     }
 
-    // Update UI
-    document.getElementById("accountTag").textContent = `Wallet: ${account}`;
-    document.getElementById("networkTag").textContent = `Network: ${network.name} (${network.chainId})`;
-    document.getElementById("connectBtn").style.display = "none";
-    document.getElementById("disconnectBtn").style.display = "inline-block";
+    // ✅ Update UI (cek dulu apakah element ada)
+    const accTag = document.getElementById("accountTag");
+    const netTag = document.getElementById("networkTag");
+    if (accTag) accTag.textContent = `Wallet: ${account}`;
+    if (netTag) netTag.textContent = `Network: ${network.name} (${network.chainId})`;
 
-    // Inisialisasi kontrak
+    const connectBtn = document.getElementById("connectBtn");
+    const disconnectBtn = document.getElementById("disconnectBtn");
+    if (connectBtn) connectBtn.style.display = "none";
+    if (disconnectBtn) disconnectBtn.style.display = "inline-block";
+
+    // ✅ Inisialisasi kontrak NFT & Market
     nft = new ethers.Contract(NFT_ADDR, ERC721_ENUM_ABI, signer);
     market = new ethers.Contract(MARKET_ADDR, MARKET_ABI, signer);
 
     console.log("✅ Wallet connected:", account);
+
+    // 👉 Deteksi jumlah NFT user
+    let balance = await nft.balanceOf(account);
+    console.log(`📦 Kamu punya ${balance.toString()} NFT`);
+
+    if (balance.gt(0)) {
+      for (let i = 0; i < balance; i++) {
+        let tokenId = await nft.tokenOfOwnerByIndex(account, i);
+        console.log(`🎨 NFT ID: ${tokenId.toString()}`);
+      }
+    } else {
+      console.log("❌ Tidak ada NFT di wallet ini.");
+    }
+
   } catch (err) {
     console.error("❌ Wallet connect failed:", err);
     alert("Failed to connect wallet. Check console for details.");
